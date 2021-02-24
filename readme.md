@@ -4,7 +4,7 @@ This module is meant for the [Azure REST API](https://docs.microsoft.com/en-gb/r
 
 * If you want to know more about how to log in via a Client Secret (even with Delegated permissions), follow this **[link](https://bwit.blog/delegated-permissions-with-a-client-secret-by-adding-roles-to-a-service-principal/)**.
 * If you want to know more about how to log in via MFA with a RedirectUri, follow this **[link](https://bwit.blog/how-to-start-with-microsoft-graph-in-powershell/#I_will_use_credentials)**.
-* 
+
 The module handles the token and throttling for you. 
 
 * [PowerShell Gallery](https://www.powershellgallery.com/packages/Optimized.Aza)

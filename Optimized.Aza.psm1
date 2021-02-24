@@ -97,10 +97,9 @@ function Connect-Aza {
         [Parameter(Mandatory = $true)]
         [String]
         $Tenant,
-        [Parameter(Mandatory = $false, ParameterSetName = 'RedirectUri')]
-        [AllowEmptyString()]  
-        [Object]
-        $LoginScope,
+        [Parameter(Mandatory = $false)]
+        [string]
+        $Resource = 'https://management.azure.com/.default',
         [Parameter(Mandatory = $false)]
         [Switch]
         $Force
@@ -120,21 +119,24 @@ function Connect-Aza {
             Receive-AzaOauthToken `
                 -ApplicationID $ApplicationID `
                 -Tenant $Tenant `
-                -Thumbprint $Thumbprint 
+                -Thumbprint $Thumbprint `
+                -Resource $Resource 
         }
         elseif ($Certificate) {
             Write-Verbose "Connect-Aza: Certificate: Logging in with certificate."
             Receive-AzaOauthToken `
                 -ApplicationID $ApplicationID `
                 -Tenant $Tenant `
-                -Certificate $Certificate 
+                -Certificate $Certificate `
+                -Resource $Resource 
         }
         elseif ($ClientSecret) {
-            Write-Verbose "Connect-Aza: RedirectUri: Logging in with RedirectUri."
+            Write-Verbose "Connect-Aza: ClientSecret: Logging in with ClientSecret."
             Receive-AzaOauthToken `
                 -ApplicationID $ApplicationID `
                 -Tenant $Tenant `
-                -ClientSecret $ClientSecret
+                -ClientSecret $ClientSecret `
+                -Resource $Resource
         }
         elseif ($RedirectUri) {
             Write-Verbose "Connect-Aza: MFA UserCredentials: Logging in with MFA UserCredentials."
@@ -142,18 +144,19 @@ function Connect-Aza {
                 -ApplicationID $ApplicationID `
                 -Tenant $Tenant `
                 -RedirectUri $RedirectUri `
-                -LoginScope $LoginScope
+                -Resource $Resource
         }
         elseif ($UserCredentials) {
             Write-Verbose "Connect-Aza: Basic UserCredentials: Logging in with Basic UserCredentials."
             Receive-AzaOauthToken `
                 -ApplicationID $ApplicationID `
                 -Tenant $Tenant `
-                -UserCredentials $UserCredentials 
+                -UserCredentials $UserCredentials `
+                -Resource $Resource
         }
     }
     end {
-        return "You've successfully logged in to Azure.Service.Management.API."
+        return "You've successfully logged in to $Resource."
     }
 }
 
@@ -177,7 +180,7 @@ function Disconnect-Aza {
     )
     begin {
         if ($global:AzaLoginType.length -ge 1) {
-            Write-Verbose "Disconnect-Aza: Disconnecting from Azure.Service.Management.API."
+            Write-Verbose "Disconnect-Aza: Disconnecting from $global:AzaResource."
         }
     }
     process {
@@ -223,10 +226,16 @@ function Get-Aza {
         $URL,
         [Parameter(Mandatory = $false)]      
         [switch]
-        $Once
+        $Once,
+        [Parameter(Mandatory = $false)]
+        [object]
+        $CustomHeader
     )
     begin {
         Update-AzaOauthToken
+        if ($CustomHeader) {
+            Enable-AzaCustomHeader -CustomHeader $CustomHeader
+        }
     }
     process {
         try {
@@ -236,7 +245,22 @@ function Get-Aza {
                 Write-Verbose "Get-Aza: Result is in Csv format. Converting to Csv and returning end result."
                 $EndResult = ConvertFrom-Csv -InputObject $Result
             }
-            if ($result.Headers.'Content-Type' -like "application/json*") {   
+            elseif ($result.Headers.'Content-Type' -like "application/xml*") {
+                Write-Verbose "Get-Aza: Result is in XML format. Converting to XML and returning end result."     
+                $Content = $Result.Content.Substring(3, $Response.Content.Length - 3)
+                $XmlToJSon = [Newtonsoft.Json.JsonConvert]::SerializeXmlNode([xml]$Content)
+                $JsonToObject = ConvertFrom-Json -InputObject $XmlToJson
+                Write-Warning 'Get-Mga: To see different data types (Object, JSON, XML, Original) use $global:AzaDataType.'
+                $global:AzaDataType = [PSCustomObject]@{
+                    Object = $JsonToObject
+                    JSON   = $XmlToJSon
+                    XML    = $Content
+                    OG     = $Result
+                }
+                $Result = $JsonToObject | Format-Custom -Depth 1000000000
+                $EndResult = $Result
+            }
+            elseif ($result.Headers.'Content-Type' -like "application/json*") {   
                 Write-Verbose "Get-Aza: Result is in JSON format. Converting to JSON."
                 $Result = ConvertFrom-Json -InputObject $Result
                 if ($Result.'@odata.nextLink') {
@@ -273,6 +297,10 @@ function Get-Aza {
                     $EndResult = $Result
                 }
             }
+            else {
+                $EndResult = $Result
+                throw "Result is in an unrecognizable format: $($Result.Headers)."
+            }
         }
         catch [System.Net.WebException] {
             Write-Warning "WebException Error message! This could be due to throttling limit."
@@ -293,10 +321,16 @@ function Get-Aza {
             }
         }
         catch {
+            if ($CustomHeader) {
+                Disable-AzaCustomHeader
+            }
             throw $_.Exception.Message
         }
     }
     end {
+        if ($CustomHeader) {
+            Disable-AzaCustomHeader
+        }
         return $EndResult
     }
 }
@@ -335,31 +369,44 @@ function Post-Aza {
         $InputObject,
         [Parameter(Mandatory = $false)]
         [switch]
-        $Put
+        $Put,
+        [Parameter(Mandatory = $false)]
+        [object]
+        $CustomHeader,
+        [Parameter(Mandatory = $false)]
+        [switch]
+        $KeepFormat
     )
     begin {
         Update-AzaOauthToken
-        $InputObject = ConvertTo-AzaJson -InputObject $InputObject
+        if ($KeepFormat -ne $true) {
+            $InputObject = ConvertTo-AzaJson -InputObject $InputObject
+        } 
+        else {
+            Write-verbose 'Post-Aza: begin: KeepFormat switch found. Data will not be converted to JSON.'
+        }
+        if ($CustomHeader) {
+            Enable-AzaCustomHeader -CustomHeader $CustomHeader
+        }
     }
     process {
         try {
             if ($InputObject) {
                 if (!($Put -eq $true)) {
-                    Write-Verbose "Post-Aza: Posting InputObject to Azure.Service.Management.API."
-                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaheaderParameters -Method post -Body $InputObject -ContentType application/json
+                    Write-Verbose "Post-Aza: Posting InputObject to $global:AzaResource."
+                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method post -Body $InputObject -ContentType application/json
                 } 
                 else {
-                    Write-Verbose "Post-Aza: Putting InputObject to Azure.Service.Management.API."
-                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaheaderParameters -Method put -Body $InputObject -ContentType application/json
-    
+                    Write-Verbose "Post-Aza: Putting InputObject to $global:AzaResource."
+                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method put -Body $InputObject -ContentType application/json
                 }
             }
             else {
                 if (!($Put -eq $true)) {
-                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaheaderParameters -Method post -ContentType application/json   
+                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method post -ContentType application/json   
                 } 
                 else {
-                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaheaderParameters -Method put -ContentType application/json   
+                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method put -ContentType application/json   
                 } 
             }
         }
@@ -373,15 +420,87 @@ function Post-Aza {
                 $Result = Post-Aza -URL $URL -InputObject $InputObject
             }
             else {
+                if ($CustomHeader) {
+                    Disable-AzaCustomHeader
+                }
                 throw $_.Exception.Message
             }
         }
         catch {
+            if ($CustomHeader) {
+                Disable-AzaCustomHeader
+            }
             throw $_.Exception.Message
         }
     }
     end {
-        Write-Verbose "Post-Aza: We've successfully Posted the data to Azure.Service.Management.API."
+        if ($CustomHeader) {
+            Disable-AzaCustomHeader
+        }
+        Write-Verbose "Post-Aza: We've successfully Posted the data to $global:AzaResource."
+        return $Result
+    }
+}
+
+function Put-Aza {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]
+        $URL,
+        [Parameter(Mandatory = $false)]
+        [object]
+        $InputObject,
+        [Parameter(Mandatory = $false)]
+        [object]
+        $CustomHeader,
+        [Parameter(Mandatory = $false)]
+        [switch]
+        $KeepFormat
+    )  
+    begin {
+        Write-Verbose 'Put-Aza: begin: Put-Aza uses Post-Aza in the backend.'
+        $Splatting = @{
+            URL = $URL
+            Put = $true
+        }
+        if ($InputObject) {
+            $Splatting.Add('InputObject', $InputObject)
+        }
+        if ($CustomHeader) {
+            $Splatting.Add('CustomHeader', $CustomHeader)
+        }
+        if ($KeepFormat) {
+            $Splatting.Add('KeepFormat', $KeepFormat)         
+        }
+    }
+    process {
+        try {
+            Post-Aza @Splatting
+            <#  if ($InputObject) {
+                if ($CustomHeader) {
+                    $Result = Post-Aza -URL $URL -InputObject $InputObject -put -CustomHeader $CustomHeader
+                }
+                else {
+                    $Result = Post-Aza -URL $URL -InputObject $InputObject -put
+                }
+            }
+            else {
+                if ($CustomHeader) {
+                    $Result = Post-Aza -URL $URL -Put -CustomHeader $CustomHeader
+                }
+                else {
+                    $Result = Post-Aza -URL $URL -Put                    
+                }
+            }
+            #>
+        }
+        catch {
+            throw $_.Exception.Message
+        }
+
+    }
+    end {
         return $Result
     }
 }
@@ -418,17 +537,23 @@ function Patch-Aza {
         $URL,
         [Parameter(Mandatory = $true)]
         [object]
-        $InputObject
+        $InputObject,
+        [Parameter(Mandatory = $false)]
+        [object]
+        $CustomHeader
     )
     begin {
         Update-AzaOauthToken
         $ValidateJson = ConvertTo-AzaJson -InputObject $InputObject -Validate
+        if ($CustomHeader) {
+            Enable-AzaCustomHeader -CustomHeader $CustomHeader
+        }
     }
     process {
         try {
-                $InputObject = ConvertTo-AzaJson -InputObject $InputObject
-                Write-Verbose "Patch-Aza: Patching InputObject to Azure.Service.Management.API."
-                $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaheaderParameters -Method Patch -Body $InputObject -ContentType application/json
+            $InputObject = ConvertTo-AzaJson -InputObject $InputObject
+            Write-Verbose "Patch-Aza: Patching InputObject to $global:AzaResource."
+            $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method Patch -Body $InputObject -ContentType application/json
         }
         catch [System.Net.WebException] {
             Write-Warning "WebException Error message! This could be due to throttling limit."
@@ -444,11 +569,17 @@ function Patch-Aza {
             }
         }
         catch {
+            if ($CustomHeader) {
+                Disable-AzaCustomHeader
+            }
             throw $_.Exception.Message
         }
     }
     end {
-        Write-Verbose "Patch-Aza: We've successfully Patched the data to Azure.Service.Management.API."
+        if ($CustomHeader) {
+            Disable-AzaCustomHeader
+        }
+        Write-Verbose "Patch-Aza: We've successfully Patched the data to $global:AzaResource."
         return $Result
     }
 }
@@ -479,21 +610,27 @@ function Delete-Aza {
         $URL,
         [Parameter(Mandatory = $false)]
         [string]
-        $InputObject
+        $InputObject,
+        [Parameter(Mandatory = $false)]
+        [object]
+        $CustomHeader
     )
     begin {
         Update-AzaOauthToken
+        if ($CustomHeader) {
+            Enable-AzaCustomHeader -CustomHeader $CustomHeader
+        }
     }
     process {
         try {
             if ($InputObject) {
-                Write-Verbose "Delete-Aza: Deleting InputObject on $URL to Azure.Service.Management.API."
+                Write-Verbose "Delete-Aza: Deleting InputObject on $URL to $global:AzaResource."
                 $InputObject = ConvertTo-AzaJson -InputObject $InputObject
-                $Result = Invoke-RestMethod -Uri $URL -body $InputObject -Headers $global:AzaheaderParameters -Method Delete -ContentType application/json
+                $Result = Invoke-RestMethod -Uri $URL -body $InputObject -Headers $global:AzaHeaderParameters -Method Delete -ContentType application/json
             }
             else {
-                Write-Verbose "Delete-Aza: Deleting conent on $URL to Azure.Service.Management.API."
-                $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaheaderParameters -Method Delete -ContentType application/json
+                Write-Verbose "Delete-Aza: Deleting conent on $URL to $global:AzaResource."
+                $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method Delete -ContentType application/json
             }
         }
         catch [System.Net.WebException] {
@@ -515,11 +652,17 @@ function Delete-Aza {
             }
         }
         catch {
+            if ($CustomHeader) {
+                Disable-AzaCustomHeader
+            }
             throw $_.Exception.Message
         }
     }
     end {
-        Write-Verbose "Delete-Aza: We've successfully deleted the data on Azure.Service.Management.API."
+        if ($CustomHeader) {
+            Disable-AzaCustomHeader
+        }
+        Write-Verbose "Delete-Aza: We've successfully deleted the data on $global:AzaResource."
         return $Result
     }
 }
@@ -552,32 +695,36 @@ function Update-AzaOauthToken {
         Receive-AzaOauthToken `
             -ApplicationID $global:AzaApplicationID `
             -Tenant $global:AzaTenant `
-            -ClientSecret $global:AzaSecret
+            -ClientSecret $global:AzaSecret `
+            -Resource $($global:AzaResource)
     }
     elseif ($null -ne $global:AzaCert) {
         Receive-AzaOauthToken `
             -ApplicationID $global:AzaApplicationID `
             -Tenant $global:AzaTenant `
-            -Certificate $global:AzaCertificate
+            -Certificate $global:AzaCertificate `
+            -Resource $($global:AzaResource)
     }
     elseif ($null -ne $global:AzaTPrint) {
         Receive-AzaOauthToken `
             -ApplicationID $global:AzaApplicationID `
             -Tenant $global:AzaTenant `
-            -Thumbprint $global:AzaThumbprint 
+            -Thumbprint $global:AzaThumbprint `
+            -Resource $($global:AzaResource) 
     }
     elseif ($null -ne $global:AzaRU) {
         Receive-AzaOauthToken `
             -ApplicationID $global:AzaApplicationID `
             -Tenant $global:AzaTenant `
             -RedirectUri $global:AzaRedirectUri `
-            -LoginScope $global:AzaLoginScope
+            -Resource $($global:AzaResource)
     }
     elseif ($null -ne $global:AzaBasic) {
         Receive-AzaOauthToken `
             -ApplicationID $global:AzaApplicationID `
             -Tenant $global:AzaTenant `
-            -UserCredentials $global:AzaUserCredentials 
+            -UserCredentials $global:AzaUserCredentials `
+            -Resource $($global:AzaResource)
     }
     else {
         Throw "You need to run Connect-Aza before you can continue. Exiting script..."
@@ -603,28 +750,18 @@ function Receive-AzaOauthToken {
         [Parameter(Mandatory = $true, ParameterSetName = 'Redirecturi')]
         [string]
         $RedirectUri,
-        [Parameter(Mandatory = $false, ParameterSetName = 'Redirecturi')]
-        [AllowEmptyString()]  
-        [Object]
-        $LoginScope,
+        [Parameter(Mandatory = $true)]
+        $Resource,
         [Parameter(Mandatory = $true, ParameterSetName = 'UserCredentials')]
         [System.Net.ICredentials]
         $UserCredentials
     )
     begin {
         try { 
+            $global:AzaResource = $Resource
+            [System.Collections.Generic.List[String]]$Resource = @($Resource)
             $global:AzaTenant = $Tenant
             $global:AzaApplicationID = $ApplicationID
-            if ($null -eq $LoginScope) {
-                [System.Collections.Generic.List[String]]$LoginScope = @('https://management.azure.com/.default')
-            }
-            else {
-                $Data = @('https://management.azure.com/.default')
-                foreach ($Scp in $LoginScope) {
-                    $Data += $Scp
-                }
-                [System.Collections.Generic.List[String]]$LoginScope = ([string]$Data).replace('/ ', '/')
-            }
             [datetime]$UnixDateTime = '1970-01-01 00:00:00'
             $Date = Get-Date
             $UTCDate = [System.TimeZoneInfo]::ConvertTimeToUtc($Date)
@@ -664,13 +801,24 @@ function Receive-AzaOauthToken {
                 if (!($global:AzaAppPass)) {
                     Write-Verbose "Receive-AzaOauthToken: ApplicationSecret: This is the first time logging in with a ClientSecret."
                     $Builder = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ApplicationID).WithTenantId($Tenant).WithClientSecret($TempPass).Build()
-                    $global:AzaAppPass = $Builder.AcquireTokenForClient($LoginScope).ExecuteAsync()
+                    $global:AzaAppPass = $Builder.AcquireTokenForClient($Resource).ExecuteAsync()
                     if ($null -eq $global:AzaAppPass.result.AccessToken) {
                         throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
                     }
                     else {
-                        $global:AzaheaderParameters = @{
-                            Authorization = $global:AzaAppPass.result.CreateAuthorizationHeader()
+                        if (($($Resource) -like "*storage.azure.com*") -or ($($Resource) -like "*blob.core.windows.net*")) {
+                            Write-Verbose "Receive-OauthToken: ApplicationSecret: Resource is $Resource. Creating the header parameter."
+                            $global:AzaHeaderParameters = @{
+                                Authorization  = $global:AzaAppPass.result.CreateAuthorizationHeader()
+                                'x-ms-version' = '2019-02-02'
+                                'x-ms-date'    = $([datetime]::UtcNow.ToString('R'))
+                                Accept         = 'application/xml;charset=utf8'
+                            }
+                        } 
+                        else {
+                            $global:AzaHeaderParameters = @{
+                                Authorization = $global:AzaAppPass.result.CreateAuthorizationHeader()
+                            }
                         }
                         $global:AzaLoginType = 'ClientSecret'
                         $global:AzaSecret = $Secret
@@ -697,12 +845,12 @@ function Receive-AzaOauthToken {
                 if (!($global:AzaCert)) {
                     Write-Verbose "Receive-AzaOauthToken: Certificate: This is the first time logging in with a Certificate."
                     $Builder = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ApplicationID).WithTenantId($tenant).WithCertificate($Certificate).Build()  
-                    $global:AzaCert = $Builder.AcquireTokenForClient($LoginScope).ExecuteAsync()
+                    $global:AzaCert = $Builder.AcquireTokenForClient($Resource).ExecuteAsync()
                     if ($null -eq $global:AzaCert.result.AccessToken) {
                         throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
                     }
                     else {
-                        $global:AzaheaderParameters = @{
+                        $global:AzaHeaderParameters = @{
                             Authorization = $global:AzaCert.result.CreateAuthorizationHeader()
                         }
                         $global:AzaLoginType = 'Certificate'
@@ -730,12 +878,12 @@ function Receive-AzaOauthToken {
                 if (!($global:AzaTPrint)) {
                     Write-Verbose "Receive-AzaOauthToken: Certificate: This is the first time logging in with a Certificate."
                     $Builder = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ApplicationID).WithTenantId($tenant).WithCertificate($TPCertificate).Build()  
-                    $global:AzaTPrint = $Builder.AcquireTokenForClient($LoginScope).ExecuteAsync()
+                    $global:AzaTPrint = $Builder.AcquireTokenForClient($Resource).ExecuteAsync()
                     if ($null -eq $global:AzaTPrint.result.AccessToken) {
                         throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
                     }
                     else {
-                        $global:AzaheaderParameters = @{
+                        $global:AzaHeaderParameters = @{
                             Authorization = $global:AzaTPrint.result.CreateAuthorizationHeader()
                         }
                         $global:AzaLoginType = 'Thumbprint'
@@ -763,17 +911,16 @@ function Receive-AzaOauthToken {
             elseif ($RedirectUri) { 
                 if (!($global:AzaRU)) {
                     $Builder = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($ApplicationID).WithTenantId($Tenant).WithRedirectUri($RedirectUri).Build()
-                    $global:AzaRU = $Builder.AcquireTokenInteractive($LoginScope).ExecuteAsync()
+                    $global:AzaRU = $Builder.AcquireTokenInteractive($Resource).ExecuteAsync()
                     if ($null -eq $global:AzaRU.result.AccessToken) {
                         throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
                     }
                     else {
-                        $global:AzaheaderParameters = @{
+                        $global:AzaHeaderParameters = @{
                             Authorization = $global:AzaRU.Result.CreateAuthorizationHeader()
                         }
                         $global:AzaLoginType = 'RedirectUri'
                         $global:AzaRedirectUri = $RedirectUri
-                        $global:AzaLoginScope = $LoginScope
                     }
                 }
                 else {
@@ -786,8 +933,7 @@ function Receive-AzaOauthToken {
                         Receive-AzaOauthToken `
                             -ApplicationID $ApplicationID `
                             -Tenant $Tenant `
-                            -RedirectUri $RedirectUri `
-                            -LoginScope $LoginScope
+                            -RedirectUri $RedirectUri 
                     }
                     else {
                         Write-Verbose "Receive-AzaOauthToken: MFA UserCredentials: Oauth token from last run is still active."
@@ -796,14 +942,15 @@ function Receive-AzaOauthToken {
             }
             elseif ($userCredentials) {
                 $loginURI = "https://login.microsoft.com"
-                $Resource = 'https://management.azure.com'
+                if ($Resource -like "*.default*") {
+                    $Resource = $Resource.Replace('.default', '')
+                }
                 $Body = @{
-                    grant_type = 'password';
-                    resource   = $Resource;
+                    grant_type = 'password'
+                    resource   = $($Resource)
                     username   = $($userCredentials.UserName)
                     password   = $($UserCredentials.Password)
-                    client_id  = $ApplicationID;
-                    scope      = 'openid'
+                    client_id  = $ApplicationID
                 }
                 if (!($global:AzaBasic)) {
                     $global:AzaBasic = Invoke-RestMethod -Method Post -Uri $loginURI/$Tenant/oauth2/token?api-version=1.0 -Body $Body -UseBasicParsing
@@ -811,7 +958,7 @@ function Receive-AzaOauthToken {
                         throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
                     }
                     else {
-                        $global:AzaheaderParameters = @{
+                        $global:AzaHeaderParameters = @{
                             Authorization = "$($global:AzaBasic.token_type) $($global:AzaBasic.access_token)"
                         }
                         $global:AzaLoginType = 'UserCredentials'
@@ -823,7 +970,7 @@ function Receive-AzaOauthToken {
                     Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Running test to see if Oauth token expired."
                     $OauthExpiryTime = $UnixDateTime.AddSeconds($global:AzaBasic.expires_on)
                     if ($null -ne $global:AzaBasic.refresh_token) {
-                        Write-Verbose "Receive-AzaOauthToken: "
+                        Write-Verbose "Receive-AzaOauthToken: Using the refresh token to get a new Oauth Token."
                         $Body = @{
                             refresh_token = $global:AzaBasic.refresh_token
                             grant_type    = 'refresh_token'
@@ -833,7 +980,7 @@ function Receive-AzaOauthToken {
                             Write-Warning 'We did not retrieve an Oauth access token from the refresh_token. Re-trying to log in with new token.'
                         }
                         else {
-                            $global:AzaheaderParameters = @{
+                            $global:AzaHeaderParameters = @{
                                 Authorization = "$($global:AzaBasic.token_type) $($global:AzaBasic.access_token)"
                             }
                             $global:AzaLoginType = 'UserCredentials'
@@ -845,7 +992,8 @@ function Receive-AzaOauthToken {
                         Receive-AzaOauthToken `
                             -UserCredentials $UserCredentials `
                             -Tenant $Tenant `
-                            -ApplicationID $ApplicationID
+                            -ApplicationID $ApplicationID `
+                            -Resource $Resource
                     }
                     else {
                         Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Oauth token from last run is still active."
@@ -871,7 +1019,6 @@ function ConvertTo-AzaJson {
         $Validate
     )
     begin {
-        
     }  
     process {
         try {
@@ -894,6 +1041,69 @@ function ConvertTo-AzaJson {
         else {
             return $ValidateJson
         }
+    }
+}
+
+function Enable-AzaCustomHeader {
+    [CmdletBinding()]
+    param (
+        $CustomHeader
+    )
+    
+    begin {
+        Write-Verbose 'Enable-AzaCustomHeader: begin: saving original header.'
+        $global:AzaOriginalHeader = @{}
+        foreach ($Header in $global:AzaHeaderParameters.GetEnumerator()) {
+            $global:AzaOriginalHeader.Add($Header.Key, $Header.Value)
+        }
+    }
+    process {
+        Write-Verbose 'Enable-AzaCustomHeader: begin: Merging headers.'
+        # $global:AzaHeaderParameters = $global:AzaOriginalHeader + $CustomHeader
+        foreach ($Header in $CustomHeader.GetEnumerator()) {
+            try {
+                if ($null -ne $global:AzaHeaderParameters[$Header.Key]) {
+                    $global:AzaHeaderParameters[$item.Key] = $Header.Value
+                }
+                else {
+                    $global:AzaHeaderParameters.Add($Header.key, $Header.Value)
+                }
+            }
+            catch {
+                throw $_.Exception.Message
+            }
+        }   
+    } 
+    end {
+        Write-Verbose 'Enable-AzaCustomHeader: end: CustomHeader created.'
+    }
+}
+
+function Disable-AzaCustomHeader {
+    [CmdletBinding()]
+    param (
+    )
+    begin {
+        Write-Verbose 'Disable-AzaCustomHeader: begin: Changing back to original header.'
+    }
+    process {
+        try {
+            if ($global:AzaHeaderParameters -ne $global:AzaOriginalHeader) {
+                Write-Verbose 'Disable-AzaCustomHeader: process: Reverting header.'
+                $global:AzaHeaderParameters = @{}
+                $global:AzaHeaderParameters += $global:AzaOriginalHeader
+                Remove-Variable -Name 'AzaOriginalHeader' -Scope Global
+            }
+            else {
+                Write-Verbose "Disable-AzaCustomHeader: process: Header is already original header."
+            }
+        }
+        catch {
+            throw 'Something went wrong with reverting back to original header. Re-login with Connect-Aza to continue.'
+        }
+    } 
+    end {
+        Write-Verbose 'Disable-AzaCustomHeader: end: Header changed back to original header.'
     }
 }
 #endregion internal
