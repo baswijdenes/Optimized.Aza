@@ -51,6 +51,11 @@ function Connect-Aza {
     'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX'
     Or
     XXXXXXX.onmicrosoft.com
+
+    .PARAMETER Resource
+    Default Resource is the Azure REST API.
+    -Resource accepts other Azure REST APIs like the Azure Storage API: https://docs.microsoft.com/en-us/rest/api/storageservices/.
+    Resource URL is:'https://storage.azure.com/.default'.
     
     .PARAMETER LoginScope
     You can only use LoginScope with RedirectUri, but unfortunately the token will always include all permissions the app has.
@@ -73,6 +78,9 @@ function Connect-Aza {
 
     .EXAMPLE
     Connect-Aza -redirectUri 'msalXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX://auth' -Tenant 'XXXXXXXX.onmicrosoft.com'  -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX'
+    
+    .EXAMPLE
+    Connect-Aza -ClientSecret '1yD3h~.KgROPO.K1sbRF~XXXXXXXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Resource 'https://storage.azure.com/.default'
     #>
     [CmdletBinding()]
     param (
@@ -214,10 +222,11 @@ function Get-Aza {
     .PARAMETER Once
     If you only want to retrieve data once, you can use the -Once parameter.
     
+    .PARAMETER CustomHeader
+    Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
+
     .EXAMPLE
     Get-Aza -URL 'https://management.azure.com/subscriptions/81bdb7e0-2010-4c36-ba35-71c560e3b317/resourceGroups/RG-2019/providers/Microsoft.Automation/automationAccounts/AA-2019-01/runbooks/POST-DC-2019-01?api-version=2015-10-31'
-  
-
     #>
     [CmdletBinding()]
     param (
@@ -349,9 +358,15 @@ function Post-Aza {
     
     .PARAMETER InputObject
     -InputObject will accept a PSObject or JSON.
+        
+    .PARAMETER CustomHeader
+    Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
 
     .PARAMETER Put
     Use the -Put switch when the method is a Put instead of Post.
+
+    .PARAMETER KeepFormat
+    By default the InputObject is converted to JSON. With the -KeepFormat switch it will keep the original format.
     
     .EXAMPLE
     Post-Aza `
@@ -443,6 +458,41 @@ function Post-Aza {
 }
 
 function Put-Aza {
+    <#
+    .LINK
+    https://github.com/baswijdenes/Optimized.Aza/tree/main
+
+    .SYNOPSIS
+    Put-Aza can be seen as the 'new' Verb.
+    With this cmdlet you can create objects in Azure.
+
+    .PARAMETER URL
+    URL to 'PUT' to.
+    
+    .PARAMETER InputObject
+    -InputObject will accept a PSObject or JSON.
+    
+    .PARAMETER CustomHeader
+    Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
+     
+    .PARAMETER KeepFormat
+    By default the InputObject is converted to JSON. With the -KeepFormat switch it will keep the original format.
+    
+    .EXAMPLE
+    $CustomHeader = @{
+    'x-ms-blob-type' = 'BlockBlob'
+    'content-type' = 'application/octet-stream'
+    }
+
+    $StorageAccount = 'baswijdenes'
+    $Container = 'testblob'
+    $Blob = 'cert.cer'
+
+    #$Test = Get-Content  C:\Temp\10days.cer -Raw
+    $test = [System.IO.File]::OpenRead('C:\Temp\10days.cer')
+    $URL = 'https://{0}.blob.core.windows.net/{1}/{2}' -f $StorageAccount, $Container, $blob
+    Put-Aza -URL $URL -CustomHeader $CustomHeader -InputObject $test -KeepFormat -Verbose
+    #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true, Position = 0)]
@@ -519,6 +569,9 @@ function Patch-Aza {
 
     .PARAMETER InputObject
     -InputObject will accept a PSObject or JSON.
+
+    .PARAMETER CustomHeader
+    Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
 
     .EXAMPLE
     $InputObject = [PSCustomObject]@{
@@ -598,6 +651,9 @@ function Delete-Aza {
     
     .PARAMETER InputObject
     -InputObject will accept a PSObject or JSON.
+        
+    .PARAMETER CustomHeader
+    Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
     
     .EXAMPLE
     Delete-Aza `
