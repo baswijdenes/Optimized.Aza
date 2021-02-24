@@ -1,6 +1,8 @@
 
 # Optimized.Aza
-This module is meant for the [Azure REST API](https://docs.microsoft.com/en-gb/rest/api/azure/).
+This module is meant for the [Azure REST API](https://docs.microsoft.com/en-gb/rest/api/azure/). 
+
+But can also be used for other Azure REST API's like the [Azure Storage API](https://docs.microsoft.com/en-us/rest/api/storageservices/).
 
 * If you want to know more about how to log in via a Client Secret (even with Delegated permissions), follow this **[link](https://bwit.blog/delegated-permissions-with-a-client-secret-by-adding-roles-to-a-service-principal/)**.
 * If you want to know more about how to log in via MFA with a RedirectUri, follow this **[link](https://bwit.blog/how-to-start-with-microsoft-graph-in-powershell/#I_will_use_credentials)**.
@@ -11,12 +13,15 @@ The module handles the token and throttling for you.
 * [Submit an issue](https://github.com/baswijdenes/Optimized.Aza/issues)
 * [My blog](https://bwit.blog/)
 
+## UPDATES VERSIONS
+* [0.0.0.2.md](./.Versions/0.0.0.2.md)
 
 # Optimized.Aza Cmdlets
 * [Connect-Aza](#Connect-Aza)
 * [Disconnect-Aza](#Disconnect-Aza)
 * [Get-Aza](#Get-Aza)
 * [Post-Aza](#Post-Aza)
+* [Put-Aza](#put-aza)
 * [Patch-Aza](#Patch-Aza)
 * [Delete-Aza](#Delete-Aza)
   
@@ -31,6 +36,10 @@ By selecting one of these parameters you log on with the following:
 
 The OauthToken is automatically renewed when you use cmdlets.
 
+-Resource accepts other Azure REST APIs like the [Azure Storage API](https://docs.microsoft.com/en-us/rest/api/storageservices/): 'https://storage.azure.com/.default'.
+
+Default is Azure REST API.
+
 ### Examples 
 ````PowerShell
 Connect-Aza -ClientSecret '1yD3h~.KgROPO.K1sbRF~XXXXXXXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' 
@@ -43,6 +52,8 @@ Connect-Aza -Thumbprint '3A7328F1059E9802FAXXXXXXXXXXXXXX' -ApplicationID 'XXXXX
 Connect-Aza -UserCredentials $Cred -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX'
 
 Connect-Aza -redirectUri 'msalXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX://auth' -Tenant 'XXXXXXXX.onmicrosoft.com'  -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX'
+
+Connect-Aza -ClientSecret '1yD3h~.KgROPO.K1sbRF~XXXXXXXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Resource 'https://storage.azure.com/.default'
 ````
 ---
 ## Disconnect-Aza
@@ -56,8 +67,10 @@ Disconnect-Aza
 ## Get-Aza
 Get-Aza speaks for itself. All you have to provide is the URL.
 
-You can grab the URL via the browser developer tools, Fiddler, or from the [Microsoft Graph docs](https://docs.microsoft.com/en-us/graph/overview).
+You can grab the URL via the browser developer tools, Fiddler, or from the [Azure REST API](https://docs.microsoft.com/en-gb/rest/api/azure/).
 You can use all query parameters in the URL like some in the examples.
+
+Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
 
 It will automatically use the Next Link when there is one in the returned request. 
 
@@ -75,6 +88,10 @@ Post-Aza can be seen as the 'new' Verb.
 With this cmdlet you can create objects in Azure.
 
 -InputObject will accept a PSObject or JSON. 
+
+Use -KeepFormat when you want to keep the InputObject format (Default is converted to JSON).
+
+Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
 
 Use the -Put switch when the Method is Put instead.
 
@@ -98,12 +115,55 @@ Post-Aza `
     -URL 'https://management.azure.com/subscriptions/81bdb7e0-2010-4c36-ba35-71c560e3b317/resourceGroups/RG-2019/providers/Microsoft.Automation/automationAccounts/AA-2019-01/runbooks/New-PUT-PSScript?api-version=2015-10-31' `
     -InputObject $InputObject `
     -Put
+```` 
+````PowerShell
+$CustomHeader = @{
+    'x-ms-blob-type' = 'BlockBlob'
+    'content-type' = 'application/octet-stream'
+}
+
+$StorageAccount = 'baswijdenes'
+$Container = 'testblob'
+$Blob = 'certcert.cer'
+
+#$Test = Get-Content  C:\Temp\10days.cer -Raw
+$test = [System.IO.File]::OpenRead('C:\Temp\10days.cer')
+$URL = 'https://{0}.blob.core.windows.net/{1}/{2}' -f $StorageAccount, $Container, $blob
+Post-Aza -URL $URL -CustomHeader $CustomHeader -InputObject $test -KeepFormat -Put   
+````
+---
+## Put-Aza
+New cmdlet. It uses Post-Aza with Parameter -put switch.
+
+-InputObject will accept a PSObject or JSON. 
+
+Use -KeepFormat when you want to keep the InputObject format (Default is converted to JSON).
+
+Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
+````PowerShell
+$CustomHeader = @{
+    'x-ms-blob-type' = 'BlockBlob'
+    'content-type' = 'application/octet-stream'
+}
+
+$StorageAccount = 'baswijdenes'
+$Container = 'testblob'
+$Blob = 'cert.cer'
+
+#$Test = Get-Content  C:\Temp\10days.cer -Raw
+$test = [System.IO.File]::OpenRead('C:\Temp\10days.cer')
+$URL = 'https://{0}.blob.core.windows.net/{1}/{2}' -f $StorageAccount, $Container, $blob
+Put-Aza -URL $URL -CustomHeader $CustomHeader -InputObject $test -KeepFormat -Verbose
 ````
 ---
 ## Patch-Aza
 Patch-Aza can be seen as the 'Update' Verb.
 
 -InputObject will accept a PSObject or JSON. 
+
+Use -KeepFormat when you want to keep the InputObject format (Default is converted to JSON).
+
+Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
 
 In the below example I change the description of a runbook in Azure Automation.
 
@@ -127,6 +187,8 @@ With this cmdlet you can remove objects from Azure.
 -URL is the URL for the item to delete.
 
 -InputObject will accept a PSObject or JSON. 
+
+Use -CustomHeader to add extra headers, after the cmdlet ran it will convert back to original header.
 
 ### Examples 
 ```PowerShell
