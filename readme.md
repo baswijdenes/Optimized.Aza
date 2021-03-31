@@ -4,6 +4,7 @@ The default Rest API is the [Azure Management REST API](https://docs.microsoft.c
 This API is fully tested and works. 
 
 Other tested Azure REST APIs:
+* Azure DevOps ([Connect-Aza](#Connect-Aza) with -PAT parameter)
 * https://vault.azure.net/.default
 * [Azure Storage API](https://docs.microsoft.com/en-us/rest/api/storageservices/).
 * https://XXXXXXXXX.blob.core.windows.net/.default
@@ -41,6 +42,7 @@ By selecting one of these parameters you log on with the following:
 * **Thumbprint**: Will search for a Certificate under thumbprint on local device and log you on with a Certificate.
 * **UserCredentials**: Will log you on with basic authentication.
 * **RedirectUri**: Will log you on with MFA Authentication.
+* **PAT**: Will log you on with a Personal Access token.
 
 The OauthToken is automatically renewed when you use cmdlets.
 
@@ -62,6 +64,9 @@ Connect-Aza -UserCredentials $Cred -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -A
 Connect-Aza -redirectUri 'msalXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX://auth' -Tenant 'XXXXXXXX.onmicrosoft.com'  -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX'
 
 Connect-Aza -ClientSecret '1yD3h~.KgROPO.K1sbRF~XXXXXXXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Resource 'https://storage.azure.com/.default'
+
+Connect-Aza -PAT 'XXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+
 ````
 ---
 ## Disconnect-Aza
