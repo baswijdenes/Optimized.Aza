@@ -1,8 +1,17 @@
 
 # Optimized.Aza
-This module is meant for the [Azure REST API](https://docs.microsoft.com/en-gb/rest/api/azure/). 
+The default Rest API is the [Azure Management REST API](https://docs.microsoft.com/en-gb/rest/api/azure/). 
+This API is fully tested and works. 
 
-But can also be used for other Azure REST API's like the [Azure Storage API](https://docs.microsoft.com/en-us/rest/api/storageservices/).
+Other tested Azure REST APIs:
+* Azure DevOps ([Connect-Aza](#Connect-Aza) with -PAT parameter)
+* https://vault.azure.net/.default
+* [Azure Storage API](https://docs.microsoft.com/en-us/rest/api/storageservices/).
+* https://XXXXXXXXX.blob.core.windows.net/.default
+
+The rest is untested but you can use them with [Connect-Aza](#Connect-Aza) and the -Resource parameter. You can set a CustomHeader by using -CustomHeader for each method. It will automatically refert back to the original header, so you'll have to use -CustomHeader per cmdlet.
+
+Did you find issues that can easily be resolved? Then please leave some feedback on Github.
 
 * If you want to know more about how to log in via a Client Secret (even with Delegated permissions), follow this **[link](https://bwit.blog/delegated-permissions-with-a-client-secret-by-adding-roles-to-a-service-principal/)**.
 * If you want to know more about how to log in via MFA with a RedirectUri, follow this **[link](https://bwit.blog/how-to-start-with-microsoft-graph-in-powershell/#I_will_use_credentials)**.
@@ -33,6 +42,7 @@ By selecting one of these parameters you log on with the following:
 * **Thumbprint**: Will search for a Certificate under thumbprint on local device and log you on with a Certificate.
 * **UserCredentials**: Will log you on with basic authentication.
 * **RedirectUri**: Will log you on with MFA Authentication.
+* **PAT**: Will log you on with a Personal Access token.
 
 The OauthToken is automatically renewed when you use cmdlets.
 
@@ -54,6 +64,9 @@ Connect-Aza -UserCredentials $Cred -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -A
 Connect-Aza -redirectUri 'msalXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX://auth' -Tenant 'XXXXXXXX.onmicrosoft.com'  -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX'
 
 Connect-Aza -ClientSecret '1yD3h~.KgROPO.K1sbRF~XXXXXXXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Resource 'https://storage.azure.com/.default'
+
+Connect-Aza -PAT 'XXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+
 ````
 ---
 ## Disconnect-Aza
