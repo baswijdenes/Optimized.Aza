@@ -23,7 +23,7 @@ The module handles the token and throttling for you.
 * [My blog](https://bwit.blog/)
 
 ## UPDATES VERSIONS
-* [0.0.0.2.md](./.Versions/0.0.0.2.md)
+* [0.0.0.3.md](./.Versions/0.0.0.3.md)
 
 # Optimized.Aza Cmdlets
 * [Connect-Aza](#Connect-Aza)
