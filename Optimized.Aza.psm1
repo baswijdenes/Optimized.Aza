@@ -90,6 +90,8 @@ function Connect-Aza {
         $Thumbprint, 
         [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
         $Certificate,
+        [Parameter(Mandatory = $true, ParameterSetName = 'PAT')]
+        $PAT,
         [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
         [string]
         $ClientSecret, 
@@ -99,13 +101,25 @@ function Connect-Aza {
         [Parameter(Mandatory = $true, ParameterSetName = 'Credentials')]
         [System.Net.ICredentials]
         $UserCredentials,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Thumbprint')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'RedirectUri')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Credentials')]
         [String]
         $ApplicationID,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Thumbprint')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'RedirectUri')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Credentials')]
         [String]
         $Tenant,
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Thumbprint')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Certificate')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'ClientSecret')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'RedirectUri')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Credentials')]
         [string]
         $Resource = 'https://management.azure.com/.default',
         [Parameter(Mandatory = $false)]
@@ -161,6 +175,12 @@ function Connect-Aza {
                 -Tenant $Tenant `
                 -UserCredentials $UserCredentials `
                 -Resource $Resource
+        }
+        elseif ($PAT) {
+            $Resource = 'Azure DevOps'
+            Write-Verbose "Connect-Aza: PAT: Logging in with Personal Access Token (Azure DevOps)."
+            Receive-AzaOauthToken `
+                -PAT $PAT
         }
     }
     end {
@@ -723,7 +743,6 @@ function Delete-Aza {
     }
 }
 #endregion main
-
 #region internal
 function Initialize-AzaConnect {
     [CmdletBinding()]
@@ -782,6 +801,8 @@ function Update-AzaOauthToken {
             -UserCredentials $global:AzaUserCredentials `
             -Resource $($global:AzaResource)
     }
+    elseif ($null -ne $global:AzaPAT) {
+    }
     else {
         Throw "You need to run Connect-Aza before you can continue. Exiting script..."
     }
@@ -790,12 +811,6 @@ function Update-AzaOauthToken {
 function Receive-AzaOauthToken {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $true)]
-        [string]
-        $ApplicationID,
-        [Parameter(Mandatory = $true)]
-        [string]
-        $Tenant,
         [Parameter(Mandatory = $true, ParameterSetName = 'Thumbprint')]
         [string]
         $Thumbprint, 
@@ -803,21 +818,43 @@ function Receive-AzaOauthToken {
         $Certificate, 
         [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
         $ClientSecret, 
+        [Parameter(Mandatory = $true, ParameterSetName = 'PAT')]
+        $PAT, 
         [Parameter(Mandatory = $true, ParameterSetName = 'Redirecturi')]
         [string]
         $RedirectUri,
-        [Parameter(Mandatory = $true)]
-        $Resource,
         [Parameter(Mandatory = $true, ParameterSetName = 'UserCredentials')]
         [System.Net.ICredentials]
-        $UserCredentials
+        $UserCredentials,
+        [Parameter(Mandatory = $true, ParameterSetName = 'UserCredentials')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Thumbprint')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Redirecturi')]
+        $Resource,
+        [Parameter(Mandatory = $true, ParameterSetName = 'UserCredentials')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Thumbprint')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Redirecturi')]
+        [string]
+        $ApplicationID,
+        [Parameter(Mandatory = $true, ParameterSetName = 'UserCredentials')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Thumbprint')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Redirecturi')]
+        [string]
+        $Tenant
     )
     begin {
         try { 
             $global:AzaResource = $Resource
-            [System.Collections.Generic.List[String]]$Resource = @($Resource)
-            $global:AzaTenant = $Tenant
-            $global:AzaApplicationID = $ApplicationID
+            [System.Collections.Generic.List[String]]$Resource = @($($Resource))
+            if ($null -eq $PAT) {
+                $global:AzaTenant = $Tenant
+                $global:AzaApplicationID = $ApplicationID
+            }
             [datetime]$UnixDateTime = '1970-01-01 00:00:00'
             $Date = Get-Date
             $UTCDate = [System.TimeZoneInfo]::ConvertTimeToUtc($Date)
@@ -890,7 +927,8 @@ function Receive-AzaOauthToken {
                         Receive-AzaOauthToken `
                             -ApplicationID $ApplicationID `
                             -Tenant $Tenant `
-                            -ClientSecret $ClientSecret           
+                            -ClientSecret $ClientSecret `
+                            -Resource $Resource         
                     }
                     else {
                         Write-Verbose "Receive-AzaOauthToken: ApplicationSecret: Oauth token from last run is still active."
@@ -923,7 +961,8 @@ function Receive-AzaOauthToken {
                         Receive-AzaOauthToken `
                             -ApplicationID $ApplicationID `
                             -Certificate $Certificate `
-                            -Tenant $Tenant
+                            -Tenant $Tenant `
+                            -Resource $Resource
                     }
                     else {
                         Write-Verbose "Receive-AzaOauthToken: Certificate: Oauth token from last run is still active."
@@ -957,7 +996,8 @@ function Receive-AzaOauthToken {
                         Receive-AzaOauthToken `
                             -ApplicationID $ApplicationID `
                             -Thumbprint $Thumbprint `
-                            -Tenant $Tenant
+                            -Tenant $Tenant `
+                            -Resource $Resource
                     }
                     else {
                         Write-Verbose "Receive-AzaOauthToken: Certificate: Oauth token from last run is still active."
@@ -989,7 +1029,8 @@ function Receive-AzaOauthToken {
                         Receive-AzaOauthToken `
                             -ApplicationID $ApplicationID `
                             -Tenant $Tenant `
-                            -RedirectUri $RedirectUri 
+                            -RedirectUri $RedirectUri `
+                            -Resource $Resource
                     }
                     else {
                         Write-Verbose "Receive-AzaOauthToken: MFA UserCredentials: Oauth token from last run is still active."
@@ -1055,6 +1096,12 @@ function Receive-AzaOauthToken {
                         Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Oauth token from last run is still active."
                     }
                 }
+            }
+            elseif ($PAT) {
+                $global:AzaPAT = $PAT
+                $global:AzaLoginType = 'PAT'
+                $Base64PAT = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(":$($PAT)"))
+                $global:AzaHeaderParameters = @{Authorization = "Basic $($Base64PAT)" }
             }
         }
         catch {
