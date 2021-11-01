@@ -43,6 +43,7 @@ By selecting one of these parameters you log on with the following:
 * **UserCredentials**: Will log you on with basic authentication.
 * **RedirectUri**: Will log you on with MFA Authentication.
 * **PAT**: Will log you on with a Personal Access token.
+* **ManagedIdentity**: Will log a Managed Identity in Azure on.
 
 The OauthToken is automatically renewed when you use cmdlets.
 
@@ -67,6 +68,7 @@ Connect-Aza -ClientSecret '1yD3h~.KgROPO.K1sbRF~XXXXXXXXXXXXX' -ApplicationID 'X
 
 Connect-Aza -PAT 'XXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 
+Connect-Aza -ManagedIdentity -Resource 'https://management.azure.com'
 ````
 ---
 ## Disconnect-Aza

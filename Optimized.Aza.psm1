@@ -44,6 +44,9 @@ function Connect-Aza {
     ApplicationID is the ID for the AzureAD application. It should look like this:
     'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX'
 
+    .PARAMETER ManagedIdentity
+    This is a switch for when it's a Managed Identity authenticating to Azure REST API.
+
     .PARAMETER Tenant
     Tenant is the TenantID or onmicrosoft.com address. Don't confuse this with ApplicationID.
 
@@ -71,9 +74,6 @@ function Connect-Aza {
     Connect-Aza -Certificate $Cert -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Tenant 'XXXXXXXX.onmicrosoft.com'
 
     .EXAMPLE
-    Connect-Aza -Thumbprint '3A7328F1059E9802FAXXXXXXXXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Tenant 'XXXXXXXX.onmicrosoft.com' 
-
-    .EXAMPLE
     Connect-Aza -UserCredentials $Cred -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX'
 
     .EXAMPLE
@@ -81,14 +81,15 @@ function Connect-Aza {
     
     .EXAMPLE
     Connect-Aza -ClientSecret '1yD3h~.KgROPO.K1sbRF~XXXXXXXXXXXXX' -ApplicationID 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Tenant 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' -Resource 'https://storage.azure.com/.default'
+
+    .EXAMPLE
+    Connect-Aza -ManagedIdentity -Resource 'https://management.azure.com'
     #>
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $true, ParameterSetName = 'Thumbprint')]
-        [ValidateScript( { $_.length -eq 40 })]
-        [string]
-        $Thumbprint, 
         [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
+        [ValidateScript( { ($_.length -eq 40) -or ([System.Security.Cryptography.X509Certificates.X509Certificate2]$_) })]
+        [Alias('Thumbprint')]
         $Certificate,
         [Parameter(Mandatory = $true, ParameterSetName = 'PAT')]
         $PAT,
@@ -120,11 +121,15 @@ function Connect-Aza {
         [Parameter(Mandatory = $false, ParameterSetName = 'ClientSecret')]
         [Parameter(Mandatory = $false, ParameterSetName = 'RedirectUri')]
         [Parameter(Mandatory = $false, ParameterSetName = 'Credentials')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'ManagedIdentity')]
         [string]
         $Resource = 'https://management.azure.com/.default',
         [Parameter(Mandatory = $false)]
         [Switch]
-        $Force
+        $Force,
+        [Parameter(Mandatory = $false, ParameterSetName = 'ManagedIdentity')]
+        [Switch]
+        $ManagedIdentity
     )
     begin {
         if ($Force) {
@@ -133,6 +138,9 @@ function Connect-Aza {
         }
         else {
             Initialize-AzaConnect
+        }
+        if ($Certificate.length -eq 40) {
+            $Thumbprint = $Certificate
         }
     }
     process {
@@ -181,6 +189,11 @@ function Connect-Aza {
             Write-Verbose "Connect-Aza: PAT: Logging in with Personal Access Token (Azure DevOps)."
             Receive-AzaOauthToken `
                 -PAT $PAT
+        }
+        elseif ($ManagedIdentity) {
+            Receive-AzaOauthToken `
+                -Resource $Resource `
+                -ManagedIdentity
         }
     }
     end {
@@ -803,6 +816,11 @@ function Update-AzaOauthToken {
     }
     elseif ($null -ne $global:AzaPAT) {
     }
+    elseif ($null -ne $global:AzaManagedIdentity) {
+        Receive-AzaOauthToken `
+            -ManagedIdentity `
+            -Resource $($global:AzaResource)
+    }
     else {
         Throw "You need to run Connect-Aza before you can continue. Exiting script..."
     }
@@ -820,6 +838,9 @@ function Receive-AzaOauthToken {
         $ClientSecret, 
         [Parameter(Mandatory = $true, ParameterSetName = 'PAT')]
         $PAT, 
+        [Parameter(Mandatory = $true, ParameterSetName = 'ManagedIdentity')]
+        [switch]
+        $ManagedIdentity,
         [Parameter(Mandatory = $true, ParameterSetName = 'Redirecturi')]
         [string]
         $RedirectUri,
@@ -831,6 +852,7 @@ function Receive-AzaOauthToken {
         [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
         [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
         [Parameter(Mandatory = $true, ParameterSetName = 'Redirecturi')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ManagedIdentity')]
         $Resource,
         [Parameter(Mandatory = $true, ParameterSetName = 'UserCredentials')]
         [Parameter(Mandatory = $true, ParameterSetName = 'Thumbprint')]
@@ -1090,6 +1112,61 @@ function Receive-AzaOauthToken {
                             -UserCredentials $UserCredentials `
                             -Tenant $Tenant `
                             -ApplicationID $ApplicationID `
+                            -Resource $Resource
+                    }
+                    else {
+                        Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Oauth token from last run is still active."
+                    }
+                }
+            }
+            elseif ($ManagedIdentity) {
+                $loginURI = $env:IDENTITY_ENDPOINT
+                if ($Resource -like "*.default*") {
+                    $Resource = $Resource.Replace('.default', '')
+                }
+                $Body = @{
+                    resource = $($Resource)
+                }
+                $GetTokenHeader = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+                $GetTokenHeader.add('X-IDENTITY-HEADER', $env:IDENTITY_HEADER)
+                $GetTokenHeader.Add('Metadata', 'True')
+                if (!($global:AzaManagedIdentity)) {
+                    $global:AzaManagedIdentity = Invoke-RestMethod -Method Post -Uri $loginURI -Headers $GetTokenHeader -Body $Body -ContentType 'application/x-www-form-urlencoded'
+                    if ($null -eq $global:AzaManagedIdentity.access_token) {
+                        throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
+                    }
+                    else {
+                        $global:AzaHeaderParameters = @{
+                            Authorization = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                        }
+                        $global:AzaLoginType = 'ManagedIdentity'
+                    }
+                }
+                else {
+                    Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Oauth token already exists from previously running cmdlets."
+                    Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Running test to see if Oauth token expired."
+                    $OauthExpiryTime = $UnixDateTime.AddSeconds($global:AzaManagedIdentity.expires_on)
+                    if ($null -ne $global:AzaManagedIdentity.refresh_token) {
+                        Write-Verbose "Receive-AzaOauthToken: Using the refresh token to get a new Oauth Token."
+                        $Body = @{
+                            refresh_token = $global:AzaManagedIdentity.refresh_token
+                            grant_type    = 'refresh_token'
+                        }
+                        $global:AzaManagedIdentity = Invoke-RestMethod -Method Post -Uri $loginURI/$Tenant/oauth2/token?api-version=1.0 -Body $Body -UseBasicParsing
+                        if ($null -eq $global:AzaManagedIdentity.access_token) {
+                            Write-Warning 'We did not retrieve an Oauth access token from the refresh_token. Re-trying to log in with new token.'
+                        }
+                        else {
+                            $global:AzaHeaderParameters = @{
+                                Authorization = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                            }
+                            $global:AzaLoginType = 'ManagedIdentity'
+                        }
+                    }
+                    if ($OauthExpiryTime -le $UTCDate) {
+                        $global:AzaManagedIdentity = $null
+                        Receive-AzaOauthToken `
+                            -ManagedIdentity `
                             -Resource $Resource
                     }
                     else {
