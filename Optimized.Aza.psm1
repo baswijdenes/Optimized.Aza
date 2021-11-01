@@ -339,9 +339,16 @@ function Get-Aza {
                     $EndResult = $Result
                 }
             }
+            elseif ($Result.Headers.'Content-Type' -like "text/plain*") {
+                $EndResult = $Result.Content
+            }
+            elseif ($Result.Headers.'content-type' -like "application/x-zip-compressed*") {
+                Write-Verbose "Get-Aza: Content is of Type application/x-zip-compressed. Returning Bytes. Use Set-Content-Encoding Byte to write Bytes to file"
+                $EndResult = $Result.Content
+            }
             else {
-                $EndResult = $Result
-                throw "Result is in an unrecognizable format: $($Result.Headers)."
+                $EndResult = $Result.Content
+                Write-Warning "Result is in an unrecognizable format: $([string]$Result.Headers)."
             }
         }
         catch [System.Net.WebException] {

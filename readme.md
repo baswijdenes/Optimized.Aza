@@ -24,6 +24,8 @@ The module handles the token and throttling for you.
 
 ## UPDATES VERSIONS
 * [0.0.0.3.md](./.Versions/0.0.0.3.md)
+* [0.0.0.4.md](./.Versions/0.0.0.4.md)
+* [0.0.0.5.md](./.Versions/0.0.0.5.md)
 
 # Optimized.Aza Cmdlets
 * [Connect-Aza](#Connect-Aza)
