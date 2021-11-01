@@ -442,6 +442,7 @@ function Post-Aza {
         }
         if ($CustomHeader) {
             Enable-AzaCustomHeader -CustomHeader $CustomHeader
+            Write-verbose ($global:AzaHeaderParameters | Convertto-Json -Depth 10)
         }
     }
     process {
@@ -449,19 +450,19 @@ function Post-Aza {
             if ($InputObject) {
                 if (!($Put -eq $true)) {
                     Write-Verbose "Post-Aza: Posting InputObject to $global:AzaResource."
-                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method post -Body $InputObject -ContentType application/json
+                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method post -Body $InputObject 
                 } 
                 else {
                     Write-Verbose "Post-Aza: Putting InputObject to $global:AzaResource."
-                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method put -Body $InputObject -ContentType application/json
+                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method put -Body $InputObject 
                 }
             }
             else {
                 if (!($Put -eq $true)) {
-                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method post -ContentType application/json   
+                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method post    
                 } 
                 else {
-                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method put -ContentType application/json   
+                    $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method put    
                 } 
             }
         }
@@ -591,7 +592,7 @@ function Put-Aza {
 
     }
     end {
-        return $Result
+        # return $Result
     }
 }
 
@@ -646,7 +647,7 @@ function Patch-Aza {
         try {
             $InputObject = ConvertTo-AzaJson -InputObject $InputObject
             Write-Verbose "Patch-Aza: Patching InputObject to $global:AzaResource."
-            $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method Patch -Body $InputObject -ContentType application/json
+            $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method Patch -Body $InputObject 
         }
         catch [System.Net.WebException] {
             Write-Warning "WebException Error message! This could be due to throttling limit."
@@ -722,11 +723,11 @@ function Delete-Aza {
             if ($InputObject) {
                 Write-Verbose "Delete-Aza: Deleting InputObject on $URL to $global:AzaResource."
                 $InputObject = ConvertTo-AzaJson -InputObject $InputObject
-                $Result = Invoke-RestMethod -Uri $URL -body $InputObject -Headers $global:AzaHeaderParameters -Method Delete -ContentType application/json
+                $Result = Invoke-RestMethod -Uri $URL -body $InputObject -Headers $global:AzaHeaderParameters -Method Delete 
             }
             else {
                 Write-Verbose "Delete-Aza: Deleting conent on $URL to $global:AzaResource."
-                $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method Delete -ContentType application/json
+                $Result = Invoke-RestMethod -Uri $URL -Headers $global:AzaHeaderParameters -Method Delete 
             }
         }
         catch [System.Net.WebException] {
@@ -935,11 +936,13 @@ function Receive-AzaOauthToken {
                                 'x-ms-version' = '2019-02-02'
                                 'x-ms-date'    = $([datetime]::UtcNow.ToString('R'))
                                 Accept         = 'application/xml;charset=utf8'
+                                'Content-Type' = 'application/json'
                             }
                         } 
                         else {
                             $global:AzaHeaderParameters = @{
                                 Authorization = $global:AzaAppPass.result.CreateAuthorizationHeader()
+                                'Content-Type' = 'application/json'
                             }
                         }
                         $global:AzaLoginType = 'ClientSecret'
@@ -975,6 +978,7 @@ function Receive-AzaOauthToken {
                     else {
                         $global:AzaHeaderParameters = @{
                             Authorization = $global:AzaCert.result.CreateAuthorizationHeader()
+                            'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'Certificate'
                         $global:AzaCertificate = $Certificate
@@ -1009,6 +1013,7 @@ function Receive-AzaOauthToken {
                     else {
                         $global:AzaHeaderParameters = @{
                             Authorization = $global:AzaTPrint.result.CreateAuthorizationHeader()
+                            'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'Thumbprint'
                         $global:AzaThumbprint = $Thumbprint
@@ -1043,6 +1048,7 @@ function Receive-AzaOauthToken {
                     else {
                         $global:AzaHeaderParameters = @{
                             Authorization = $global:AzaRU.Result.CreateAuthorizationHeader()
+                            'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'RedirectUri'
                         $global:AzaRedirectUri = $RedirectUri
@@ -1086,6 +1092,7 @@ function Receive-AzaOauthToken {
                     else {
                         $global:AzaHeaderParameters = @{
                             Authorization = "$($global:AzaBasic.token_type) $($global:AzaBasic.access_token)"
+                            'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'UserCredentials'
                         $global:AzaUserCredentials = $UserCredentials
@@ -1108,6 +1115,7 @@ function Receive-AzaOauthToken {
                         else {
                             $global:AzaHeaderParameters = @{
                                 Authorization = "$($global:AzaBasic.token_type) $($global:AzaBasic.access_token)"
+                                'Content-Type' = 'application/json'
                             }
                             $global:AzaLoginType = 'UserCredentials'
                             $global:AzaUserCredentials = $UserCredentials
@@ -1145,6 +1153,7 @@ function Receive-AzaOauthToken {
                     else {
                         $global:AzaHeaderParameters = @{
                             Authorization = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                            'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'ManagedIdentity'
                     }
@@ -1166,6 +1175,7 @@ function Receive-AzaOauthToken {
                         else {
                             $global:AzaHeaderParameters = @{
                                 Authorization = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                                'Content-Type' = 'application/json'
                             }
                             $global:AzaLoginType = 'ManagedIdentity'
                         }
@@ -1185,7 +1195,10 @@ function Receive-AzaOauthToken {
                 $global:AzaPAT = $PAT
                 $global:AzaLoginType = 'PAT'
                 $Base64PAT = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(":$($PAT)"))
-                $global:AzaHeaderParameters = @{Authorization = "Basic $($Base64PAT)" }
+                $global:AzaHeaderParameters = @{
+                    Authorization = "Basic $($Base64PAT)" 
+                    'Content-Type' = 'application/json'
+            }
             }
         }
         catch {
@@ -1250,7 +1263,7 @@ function Enable-AzaCustomHeader {
         foreach ($Header in $CustomHeader.GetEnumerator()) {
             try {
                 if ($null -ne $global:AzaHeaderParameters[$Header.Key]) {
-                    $global:AzaHeaderParameters[$item.Key] = $Header.Value
+                    $global:AzaHeaderParameters[$Header.Key] = $Header.Value
                 }
                 else {
                     $global:AzaHeaderParameters.Add($Header.key, $Header.Value)
