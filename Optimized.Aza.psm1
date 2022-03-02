@@ -144,60 +144,68 @@ function Connect-Aza {
         }
     }
     process {
-        if ($Thumbprint) {
-            Write-Verbose "Connect-Aza: Thumbprint: Logging in with Thumbprint."
-            Receive-AzaOauthToken `
-                -ApplicationID $ApplicationID `
-                -Tenant $Tenant `
-                -Thumbprint $Thumbprint `
-                -Resource $Resource 
+        try {
+            if ($Thumbprint) {
+                Write-Verbose "Connect-Aza: Thumbprint: Logging in with Thumbprint."
+                Receive-AzaOauthToken `
+                    -ApplicationID $ApplicationID `
+                    -Tenant $Tenant `
+                    -Thumbprint $Thumbprint `
+                    -Resource $Resource 
+            }
+            elseif ($Certificate) {
+                Write-Verbose "Connect-Aza: Certificate: Logging in with certificate."
+                Receive-AzaOauthToken `
+                    -ApplicationID $ApplicationID `
+                    -Tenant $Tenant `
+                    -Certificate $Certificate `
+                    -Resource $Resource 
+            }
+            elseif ($ClientSecret) {
+                Write-Verbose "Connect-Aza: ClientSecret: Logging in with ClientSecret."
+                Receive-AzaOauthToken `
+                    -ApplicationID $ApplicationID `
+                    -Tenant $Tenant `
+                    -ClientSecret $ClientSecret `
+                    -Resource $Resource
+            }
+            elseif ($RedirectUri) {
+                Write-Verbose "Connect-Aza: MFA UserCredentials: Logging in with MFA UserCredentials."
+                Receive-AzaOauthToken `
+                    -ApplicationID $ApplicationID `
+                    -Tenant $Tenant `
+                    -RedirectUri $RedirectUri `
+                    -Resource $Resource
+            }
+            elseif ($UserCredentials) {
+                Write-Verbose "Connect-Aza: Basic UserCredentials: Logging in with Basic UserCredentials."
+                Receive-AzaOauthToken `
+                    -ApplicationID $ApplicationID `
+                    -Tenant $Tenant `
+                    -UserCredentials $UserCredentials `
+                    -Resource $Resource
+            }
+            elseif ($PAT) {
+                $Resource = 'Azure DevOps'
+                Write-Verbose "Connect-Aza: PAT: Logging in with Personal Access Token (Azure DevOps)."
+                Receive-AzaOauthToken `
+                    -PAT $PAT
+            }
+            elseif ($ManagedIdentity) {
+                if ($Resource -like "*.default*") {
+                    $Resource = $Resource.Replace('.default', '')
+                }
+                Receive-AzaOauthToken `
+                    -Resource $Resource `
+                    -ManagedIdentity 'TryMe'
+            }
         }
-        elseif ($Certificate) {
-            Write-Verbose "Connect-Aza: Certificate: Logging in with certificate."
-            Receive-AzaOauthToken `
-                -ApplicationID $ApplicationID `
-                -Tenant $Tenant `
-                -Certificate $Certificate `
-                -Resource $Resource 
-        }
-        elseif ($ClientSecret) {
-            Write-Verbose "Connect-Aza: ClientSecret: Logging in with ClientSecret."
-            Receive-AzaOauthToken `
-                -ApplicationID $ApplicationID `
-                -Tenant $Tenant `
-                -ClientSecret $ClientSecret `
-                -Resource $Resource
-        }
-        elseif ($RedirectUri) {
-            Write-Verbose "Connect-Aza: MFA UserCredentials: Logging in with MFA UserCredentials."
-            Receive-AzaOauthToken `
-                -ApplicationID $ApplicationID `
-                -Tenant $Tenant `
-                -RedirectUri $RedirectUri `
-                -Resource $Resource
-        }
-        elseif ($UserCredentials) {
-            Write-Verbose "Connect-Aza: Basic UserCredentials: Logging in with Basic UserCredentials."
-            Receive-AzaOauthToken `
-                -ApplicationID $ApplicationID `
-                -Tenant $Tenant `
-                -UserCredentials $UserCredentials `
-                -Resource $Resource
-        }
-        elseif ($PAT) {
-            $Resource = 'Azure DevOps'
-            Write-Verbose "Connect-Aza: PAT: Logging in with Personal Access Token (Azure DevOps)."
-            Receive-AzaOauthToken `
-                -PAT $PAT
-        }
-        elseif ($ManagedIdentity) {
-            Receive-AzaOauthToken `
-                -Resource $Resource `
-                -ManagedIdentity
+        catch {
+            throw $_
         }
     }
     end {
-        return "You've successfully logged in to $Resource."
+        return "You've successfully logged in to $Resource"
     }
 }
 
@@ -234,6 +242,91 @@ function Disconnect-Aza {
     }
     end {
         return "You've successfully logged out."
+    }
+}
+
+function Show-AzaAccessToken {
+    <#
+    .LINK
+    https://github.com/baswijdenes/Optimized.Aza/tree/main
+
+    .SYNOPSIS
+    You can use this cmdlet to show you the decoded Oauth token.
+    
+    .DESCRIPTION
+    Its mainly used for troubleshooting permission errors.
+    
+    .PARAMETER AccessToken
+    You can leave this empty unless you want to decode another Oauth token.
+
+    .PARAMETER Roles
+    By using the -Roles switch it will only show you the roles that you have assigned to your App registration.
+    
+    .EXAMPLE
+    Show-AzaAccessToken 
+
+    Show-AzaAccessToken -Roles
+    #>
+    [CmdletBinding()]
+    param (
+        [parameter(mandatory = $false)]
+        $AccessToken = ($global:AzaheaderParameters).Authorization,
+        [parameter(mandatory = $false)]
+        [switch]
+        $Roles
+    )  
+    begin {
+        try {
+            if ($AccessToken -like "Bearer *") {
+                Write-Verbose "Show-AzaAccessToken: begin: Removing 'Bearer ' from token for formatting"
+            }
+            $AccessToken = ($AccessToken).Replace('Bearer ', '')
+            $AccessTokenSplitted = $AccessToken.Split('.')
+        
+            Write-Verbose "Show-AzaAccessToken: begin: Formatting Header"
+            $AccessTokenHeader = $AccessTokenSplitted[0].Replace('-', '+').Replace('_', '/')
+            While ($AccessTokenHeader.Length % 4) {
+                Write-Verbose "Show-AzaAccessToken: begin: Adding '=' character so we can modulus 4 for Base64 encoding"
+                $AccessTokenHeader += '='
+            }      
+            Write-Verbose "Show-AzaAccessToken: begin: Formatting PayLoad"
+            $AccessTokenPayLoad = $AccessTokenSplitted.Split(".")[1].Replace('-', '+').Replace('_', '/')
+            While ($AccessTokenPayLoad.Length % 4) {
+                Write-Verbose "Show-AzaAccessToken: begin: Adding '=' character so we can modulus 4 for Base64 encoding"
+                $AccessTokenPayLoad += '='
+            }
+        }
+        catch {
+            throw $_
+        }
+    }
+    process {
+        try {
+            Write-Verbose "Show-AzaAccessToken: process: Decoding Header to JSON"
+            $AccessTokenHeaderJSON = [System.Text.Encoding]::ASCII.GetString([system.convert]::FromBase64String($AccessTokenHeader))
+            Write-Verbose "Show-AzaAccessToken: process: Decoding PayLoad to JSON"
+            $AccessTokenPayLoadJSON = [System.Text.Encoding]::ASCII.GetString([system.convert]::FromBase64String($AccessTokenPayLoad))
+            Write-Verbose "Show-AzaAccessToken: process: Removing last character from Header"
+            $AccessTokenHeaderUpdated = $AccessTokenHeaderJSON -replace ".$"
+            Write-Verbose "Show-AzaAccessToken: process: Replacing first character by ',' in PayLoad"
+            $AccessTokenPayLoadUpdated = $AccessTokenPayLoadJSON -Replace '^.', ','
+            Write-Verbose "Show-AzaAccessToken: process: Adding PayLoad to Header"
+            $AccessTokenJson = $AccessTokenHeaderUpdated + $AccessTokenPayLoadUpdated
+            Write-Verbose "Show-AzaAccessToken: process: Converting from Json to EndResult"
+            $AccessTokenEndResult = $AccessTokenJson | ConvertFrom-Json  
+        }
+        catch {
+            throw $_
+        }
+    }  
+    end {
+        if ($Roles -eq $true) {
+            Write-Verbose "Show-AzaAccessToken: end: Roles switch found | returning roles only"
+            return $AccessTokenEndResult.Roles
+        }
+        else {
+            return $AccessTokenEndResult
+        }
     }
 }
 
@@ -292,7 +385,7 @@ function Get-Aza {
                 $Content = $Result.Content.Substring(3, $Response.Content.Length - 3)
                 $XmlToJSon = [Newtonsoft.Json.JsonConvert]::SerializeXmlNode([xml]$Content)
                 $JsonToObject = ConvertFrom-Json -InputObject $XmlToJson
-                Write-Warning 'Get-Mga: To see different data types (Object, JSON, XML, Original) use $global:AzaDataType.'
+                Write-Warning 'Get-Aza: To see different data types (Object, JSON, XML, Original) use $global:AzaDataType.'
                 $global:AzaDataType = [PSCustomObject]@{
                     Object = $JsonToObject
                     JSON   = $XmlToJSon
@@ -826,8 +919,8 @@ function Update-AzaOauthToken {
     }
     elseif ($null -ne $global:AzaManagedIdentity) {
         Receive-AzaOauthToken `
-            -ManagedIdentity `
-            -Resource $($global:AzaResource)
+            -ManagedIdentity $global:AzaManagedIdentityType `
+            -Resource $global:AzaResource
     }
     else {
         Throw "You need to run Connect-Aza before you can continue. Exiting script..."
@@ -847,7 +940,7 @@ function Receive-AzaOauthToken {
         [Parameter(Mandatory = $true, ParameterSetName = 'PAT')]
         $PAT, 
         [Parameter(Mandatory = $true, ParameterSetName = 'ManagedIdentity')]
-        [switch]
+        [string]
         $ManagedIdentity,
         [Parameter(Mandatory = $true, ParameterSetName = 'Redirecturi')]
         [string]
@@ -941,7 +1034,7 @@ function Receive-AzaOauthToken {
                         } 
                         else {
                             $global:AzaHeaderParameters = @{
-                                Authorization = $global:AzaAppPass.result.CreateAuthorizationHeader()
+                                Authorization  = $global:AzaAppPass.result.CreateAuthorizationHeader()
                                 'Content-Type' = 'application/json'
                             }
                         }
@@ -977,7 +1070,7 @@ function Receive-AzaOauthToken {
                     }
                     else {
                         $global:AzaHeaderParameters = @{
-                            Authorization = $global:AzaCert.result.CreateAuthorizationHeader()
+                            Authorization  = $global:AzaCert.result.CreateAuthorizationHeader()
                             'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'Certificate'
@@ -1012,7 +1105,7 @@ function Receive-AzaOauthToken {
                     }
                     else {
                         $global:AzaHeaderParameters = @{
-                            Authorization = $global:AzaTPrint.result.CreateAuthorizationHeader()
+                            Authorization  = $global:AzaTPrint.result.CreateAuthorizationHeader()
                             'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'Thumbprint'
@@ -1047,7 +1140,7 @@ function Receive-AzaOauthToken {
                     }
                     else {
                         $global:AzaHeaderParameters = @{
-                            Authorization = $global:AzaRU.Result.CreateAuthorizationHeader()
+                            Authorization  = $global:AzaRU.Result.CreateAuthorizationHeader()
                             'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'RedirectUri'
@@ -1091,7 +1184,7 @@ function Receive-AzaOauthToken {
                     }
                     else {
                         $global:AzaHeaderParameters = @{
-                            Authorization = "$($global:AzaBasic.token_type) $($global:AzaBasic.access_token)"
+                            Authorization  = "$($global:AzaBasic.token_type) $($global:AzaBasic.access_token)"
                             'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'UserCredentials'
@@ -1114,7 +1207,7 @@ function Receive-AzaOauthToken {
                         }
                         else {
                             $global:AzaHeaderParameters = @{
-                                Authorization = "$($global:AzaBasic.token_type) $($global:AzaBasic.access_token)"
+                                Authorization  = "$($global:AzaBasic.token_type) $($global:AzaBasic.access_token)"
                                 'Content-Type' = 'application/json'
                             }
                             $global:AzaLoginType = 'UserCredentials'
@@ -1134,6 +1227,7 @@ function Receive-AzaOauthToken {
                     }
                 }
             }
+            <#
             elseif ($ManagedIdentity) {
                 $loginURI = $env:IDENTITY_ENDPOINT
                 if ($Resource -like "*.default*") {
@@ -1152,7 +1246,7 @@ function Receive-AzaOauthToken {
                     }
                     else {
                         $global:AzaHeaderParameters = @{
-                            Authorization = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                            Authorization  = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
                             'Content-Type' = 'application/json'
                         }
                         $global:AzaLoginType = 'ManagedIdentity'
@@ -1174,7 +1268,7 @@ function Receive-AzaOauthToken {
                         }
                         else {
                             $global:AzaHeaderParameters = @{
-                                Authorization = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                                Authorization  = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
                                 'Content-Type' = 'application/json'
                             }
                             $global:AzaLoginType = 'ManagedIdentity'
@@ -1190,15 +1284,96 @@ function Receive-AzaOauthToken {
                         Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Oauth token from last run is still active."
                     }
                 }
-            }
+            }#>
+            elseif ($ManagedIdentity) {
+                if (!($global:AzaManagedIdentity)) {
+                    $Body = @{
+                        resource = $($Resource)
+                    }
+                    if (($ManagedIdentity -eq 'AzFunction') -or ($ManagedIdentity -eq 'Function') -or ($ManagedIdentity -eq 'AppService') -or ($ManagedIdentity -eq 'AzAutomation') -or ($ManagedIdentity -eq 'Automation') -or ($ManagedIdentity -eq 'AA')) {
+                        $tokenAuthURI = $env:IDENTITY_ENDPOINT + "?resource=$resource&api-version=2019-08-01"
+                        $global:AzaManagedIdentity = Invoke-RestMethod -Method Get -Headers @{"X-IDENTITY-HEADER" = "$($env:IDENTITY_HEADER)" } -Uri $tokenAuthURI
+                        if ($null -eq $global:AzaManagedIdentity.access_token) {
+                            throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
+                        }
+                        else {
+                            $global:AzaHeaderParameters = @{
+                                Authorization  = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                                'Content-Type' = 'application/json'
+                            }
+                            $global:AzaLoginType = 'ManagedIdentity'
+                            $global:AzaManagedIdentityType = $ManagedIdentity
+                        }
+                    }
+                    elseif (($ManagedIdentity -eq 'VirtualMachine') -or ($ManagedIdentity -eq 'VM')) {
+                        $global:AzaManagedIdentity = Invoke-RestMethod -Uri "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=$Resource" -Headers @{Metadata = "true" }
+                        if ($null -eq $global:AzaManagedIdentity.access_token) {
+                            throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
+                        }
+                        else {
+                            $global:AzaHeaderParameters = @{
+                                Authorization  = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                                'Content-Type' = 'application/json'
+                            }
+                            $global:AzaLoginType = 'ManagedIdentity'
+                            $global:AzaManagedIdentityType = $ManagedIdentity
+                        }
+                    } 
+                    elseif ($ManagedIdentity -eq 'TryMe') {
+                        try {
+                            Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Trying Virtual Machine Managed Identity"
+                            Receive-AzaOauthToken -ManagedIdentity 'VM' -Resource $Resource
+                        }
+                        catch {
+                            Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Virtual Machine Managed Identity: FAILED"
+                            try {
+                                Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Trying Azure Automation Managed Identity"
+                                Receive-AzaOauthToken -ManagedIdentity 'AA' -Resource $Resource
+                            }
+                            catch {
+                                Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Azure Automation Managed Identity: FAILED"
+                                throw "Cannot find the Managed Identity type... Exiting cmdlet"
+                            }
+                        }
+                    }
+                }
+                else {
+                    if (($ManagedIdentity -eq 'AzFunction') -or ($ManagedIdentity -eq 'Function') -or ($ManagedIdentity -eq 'AppService') -or ($ManagedIdentity -eq 'AzAutomation') -or ($ManagedIdentity -eq 'Automation') -or ($ManagedIdentity -eq 'AA')) {
+                        Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Oauth token already exists from previously running cmdlets."
+                        Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Running test to see if Oauth token expired."
+                        $OauthExpiryTime = $UnixDateTime.AddSeconds($global:AzaManagedIdentity.expires_on)
+                        if ($OauthExpiryTime -le $UTCDate) {
+                            $global:AzaManagedIdentity = $null
+                            Receive-AzaOauthToken `
+                                -ManagedIdentity $ManagedIdentity -Resource $Resource
+                        }
+                        else {
+                            Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Oauth token from last run is still active."
+                        }
+                    } 
+                    elseif (($ManagedIdentity -eq 'VirtualMachine') -or ($ManagedIdentity -eq 'VM')) {
+                        Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Oauth token already exists from previously running cmdlets."
+                        Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Running test to see if Oauth token expired."
+                        $OauthExpiryTime = $UnixDateTime.AddSeconds($global:AzaManagedIdentity.expires_on)
+                        if ($OauthExpiryTime -le $UTCDate) {
+                            $global:AzaManagedIdentity = $null
+                            Receive-AzaOauthToken `
+                                -ManagedIdentity $ManagedIdentity -Resource $Resource
+                        }
+                        else {
+                            Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Oauth token from last run is still active."
+                        }
+                    }
+                }
+            }   
             elseif ($PAT) {
                 $global:AzaPAT = $PAT
                 $global:AzaLoginType = 'PAT'
                 $Base64PAT = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(":$($PAT)"))
                 $global:AzaHeaderParameters = @{
-                    Authorization = "Basic $($Base64PAT)" 
+                    Authorization  = "Basic $($Base64PAT)" 
                     'Content-Type' = 'application/json'
-            }
+                }
             }
         }
         catch {

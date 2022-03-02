@@ -26,6 +26,7 @@ The module handles the token and throttling for you.
 * [0.0.0.3.md](./.Versions/0.0.0.3.md)
 * [0.0.0.4.md](./.Versions/0.0.0.4.md)
 * [0.0.0.5.md](./.Versions/0.0.0.5.md)
+* [0.0.0.6.md](./.Versions/0.0.0.6.md)
 
 # Optimized.Aza Cmdlets
 * [Connect-Aza](#Connect-Aza)
@@ -80,6 +81,16 @@ To update the OauthToken I fill the global scope with a number of properties. Th
 ````PowerShell
 Disconnect-Aza
 ````
+---
+## Show-AzaAccessToken
+With `Show-AzaAccessToken` you can request a decoded Token and see what is in their (normally you would paste it into (jwt.ms)[jwt.ms]).  
+With the `-Roles` switch you can also only ask the roles you have assigned to the application registration.  
+
+```PowerShell
+Show-AzaAccessToken
+
+Show-AzaAccessToken -Roles
+```
 ---
 ## Get-Aza
 Get-Aza speaks for itself. All you have to provide is the URL.
