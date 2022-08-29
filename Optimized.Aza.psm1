@@ -1318,7 +1318,26 @@ function Receive-AzaOauthToken {
                             $global:AzaLoginType = 'ManagedIdentity'
                             $global:AzaManagedIdentityType = $ManagedIdentity
                         }
-                    } 
+                    } elseif ($ManagedIdentity -eq 'LastTry') {
+                        $loginURI = $env:IDENTITY_ENDPOINT
+                        $GetTokenHeader = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+                        $GetTokenHeader.add('X-IDENTITY-HEADER', $env:IDENTITY_HEADER)
+                        $GetTokenHeader.Add('Metadata', 'True')
+                        if (!($global:AzaManagedIdentity)) {
+                            $global:AzaManagedIdentity = Invoke-RestMethod -Method Post -Uri $loginURI -Headers $GetTokenHeader -Body $Body -ContentType 'application/x-www-form-urlencoded'
+                            if ($null -eq $global:AzaManagedIdentity.access_token) {
+                                throw 'We did not retrieve an Oauth access token to continue script. Exiting script...'
+                            }
+                            else {
+                                $global:AzaHeaderParameters = @{
+                                    Authorization  = "$($global:AzaManagedIdentity.token_type) $($global:AzaManagedIdentity.access_token)"
+                                    'Content-Type' = 'application/json'
+                                }
+                                $global:AzaLoginType = 'ManagedIdentity'
+                                $global:AzaManagedIdentityType = $ManagedIdentity
+                            }
+                        }
+                    }
                     elseif ($ManagedIdentity -eq 'TryMe') {
                         try {
                             Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Trying Virtual Machine Managed Identity"
@@ -1332,7 +1351,15 @@ function Receive-AzaOauthToken {
                             }
                             catch {
                                 Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Azure Automation Managed Identity: FAILED"
-                                throw "Cannot find the Managed Identity type... Exiting cmdlet"
+                                Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Virtual Machine Managed Identity: FAILED"
+                                try {
+                                    Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Trying Last Try Managed Identity"
+                                    Receive-AzaOauthToken -ManagedIdentity 'LastTry' -Resource $Resource
+                                }
+                                catch {
+                                    Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Last Try Managed Identity: FAILED"
+                                    throw "Cannot find the Managed Identity type... Exiting cmdlet"
+                                }
                             }
                         }
                     }
@@ -1348,7 +1375,7 @@ function Receive-AzaOauthToken {
                                 -ManagedIdentity $ManagedIdentity -Resource $Resource
                         }
                         else {
-                            Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Oauth token from last run is still active."
+                            Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Oauth token from last run is still active."
                         }
                     } 
                     elseif (($ManagedIdentity -eq 'VirtualMachine') -or ($ManagedIdentity -eq 'VM')) {
@@ -1361,7 +1388,20 @@ function Receive-AzaOauthToken {
                                 -ManagedIdentity $ManagedIdentity -Resource $Resource
                         }
                         else {
-                            Write-Verbose "Receive-AzaOauthToken: Basic UserCredentials: Oauth token from last run is still active."
+                            Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Oauth token from last run is still active."
+                        }
+                    }
+                    elseif ($ManagedIdentity -eq 'LastTry') {
+                        Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Oauth token already exists from previously running cmdlets."
+                        Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Running test to see if Oauth token expired."
+                        $OauthExpiryTime = $UnixDateTime.AddSeconds($global:AzaManagedIdentity.expires_on)
+                        if ($OauthExpiryTime -le $UTCDate) {
+                            $global:AzaManagedIdentity = $null
+                            Receive-AzaOauthToken `
+                                -ManagedIdentity $ManagedIdentity -Resource $Resource
+                        }
+                        else {
+                            Write-Verbose "Receive-AzaOauthToken: ManagedIdentity: Oauth token from last run is still active."
                         }
                     }
                 }

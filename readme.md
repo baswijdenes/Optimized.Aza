@@ -1,3 +1,6 @@
+# DECREPATED
+Optimized.Aza is decrepated from today (August 29, 2022)  
+For more: [Optimized.Aza: Decrepated](https://baswijdenes.com/optimized-aza-is-decrepated-from-today-august-29-2022/)
 
 # Optimized.Aza
 The default Rest API is the [Azure Management REST API](https://docs.microsoft.com/en-gb/rest/api/azure/). 
